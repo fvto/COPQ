@@ -1,0 +1,46 @@
+{
+  "orchestrator_version": "2.0.0",
+  "execution_timestamp": "2026-10-02T11:47:23.228594",
+  "period": {
+    "year": 2026,
+    "month": 9,
+    "period_iso": "2026-09",
+    "period_label": "Sep, 2026",
+    "db_month": "Sep-2026",
+    "month_name": "September"
+  },
+  "stages": {
+    "phase1_copq_combine": {
+      "status": "SUCCESS",
+      "output_file": "C:\\Users\\User\\Desktop\\combine_COPQ\\Output\\COPQ_Clean.xlsx",
+      "size_bytes": 833515
+    },
+    "phase2_ftt_processing": {
+      "status": "SUCCESS",
+      "output_file": "C:\\Users\\User\\Desktop\\combine_COPQ\\Output\\FTT_Combined_Report.xlsx",
+      "size_bytes": 67050
+    },
+    "phase3_database_sync": {
+      "status": "SUCCESS",
+      "database_updated": [
+        "C:\\Users\\User\\Desktop\\combine_COPQ\\Database\\CoPQ database 25.xlsx",
+        "C:\\Users\\User\\Desktop\\combine_COPQ\\Database\\CoPQ_type_analysis.xlsx"
+      ],
+      "monthly_archive_dir": "C:\\Users\\User\\Desktop\\combine_COPQ\\Output\\Monthly\\2026-09\\Database"
+    },
+    "phase4_pptx_generation": {
+      "status": "SUCCESS",
+      "output_file": "C:\\Users\\User\\Desktop\\combine_COPQ\\Output\\COPQ_Report_Sep_2026.pptx",
+      "size_bytes": 687427
+    }
+  },
+  "status": "SUCCESS",
+  "errors": [],
+  "warnings": [],
+  "generated_artifacts": {
+    "copq_clean": "C:\\Users\\User\\Desktop\\combine_COPQ\\Output\\COPQ_Clean.xlsx",
+    "ftt_report": "C:\\Users\\User\\Desktop\\combine_COPQ\\Output\\FTT_Combined_Report.xlsx",
+    "database_clones": "C:\\Users\\User\\Desktop\\combine_COPQ\\Output\\Monthly\\2026-09\\Database",
+    "pptx_report": "C:\\Users\\User\\Desktop\\combine_COPQ\\Output\\COPQ_Report_Sep_2026.pptx"
+  }
+}
