@@ -722,7 +722,28 @@ def update_slide1_monthly(prs):
             set_series_categories(sers[1], months)
             set_series_values_ordered(sers[0], qty_vals)
             set_series_values_ordered(sers[1], cost_vals)
+
+            # Prevent label collision while preserving 100% full decimal precision ($14,030.11):
+            # Tilt cost labels 30 degrees (rot=1800000) and set font size to 7.5pt (sz=750).
+            _format_monthly_cost_labels(sers[1], rot=1800000, font_sz=750)
             log.info(f"Slide 1 monthly trend {info['name']} ({site}): Qty={qty_vals[-1]}, Cost=${cost_vals[-1]:,.2f}")
+
+def _format_monthly_cost_labels(ser, rot=1800000, font_sz=750):
+    """Format data labels for monthly trend cost series with 30-degree tilt and crisp font size."""
+    dlbls = ser.xpath('.//c:dLbls')
+    if dlbls:
+        dl = dlbls[0]
+        txPr = dl.xpath('.//c:txPr')
+        if txPr:
+            bodyPr = txPr[0].xpath('.//a:bodyPr')
+            if bodyPr:
+                bodyPr[0].attrib['rot'] = str(rot)
+                bodyPr[0].attrib['lIns'] = "10000"
+                bodyPr[0].attrib['rIns'] = "10000"
+            defRPr = txPr[0].xpath('.//a:defRPr')
+            if defRPr:
+                defRPr[0].attrib['sz'] = str(font_sz)
+
 
 def update_pie_chart_data(ch, cat_val_pairs, default_colors=None):
     """
