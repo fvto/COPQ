@@ -670,11 +670,18 @@ def update_copq_type_analysis(type_path, ov_data, fac_data, mod_data, report_mon
 
 import shutil
 
-def run_pipeline(clean_path=None):
+def run_pipeline(clean_path=None, db_overview_path=None, db_type_path=None, database_dir=None):
     if not clean_path:
         clean_path = CLEAN_XLSX
         if not os.path.exists(clean_path):
             clean_path = os.path.join(BASE, "Output", "COPQ_Clean.xlsx")
+
+    if database_dir:
+        target_overview = os.path.join(database_dir, os.path.basename(DB_OVERVIEW))
+        target_type = os.path.join(database_dir, os.path.basename(DB_TYPE))
+    else:
+        target_overview = db_overview_path or DB_OVERVIEW
+        target_type = db_type_path or DB_TYPE
 
     print(f"[+] Using clean source: {clean_path}")
     report_month = detect_report_month(clean_path)
@@ -693,28 +700,28 @@ def run_pipeline(clean_path=None):
         top_table, blocks, ov_data, fac_data, mod_data = parse_from_clean_df(clean_path)
 
     # 3. Update Database workbooks
-    print(f"[+] Updating {DB_OVERVIEW}...")
-    update_copq_database_25(DB_OVERVIEW, top_table, blocks, clean_path, report_month)
+    print(f"[+] Updating {target_overview}...")
+    update_copq_database_25(target_overview, top_table, blocks, clean_path, report_month)
 
-    print(f"[+] Updating {DB_TYPE}...")
-    update_copq_type_analysis(DB_TYPE, ov_data, fac_data, mod_data, report_month)
+    print(f"[+] Updating {target_type}...")
+    update_copq_type_analysis(target_type, ov_data, fac_data, mod_data, report_month)
 
     # 4. Output to Output -> Monthly -> <month_folder>
     out_monthly_dir = os.path.join(BASE, "Output", "Monthly", month_folder)
     out_monthly_db = os.path.join(out_monthly_dir, "Database")
     os.makedirs(out_monthly_db, exist_ok=True)
 
-    shutil.copy2(DB_OVERVIEW, os.path.join(out_monthly_db, os.path.basename(DB_OVERVIEW)))
-    shutil.copy2(DB_TYPE, os.path.join(out_monthly_db, os.path.basename(DB_TYPE)))
+    shutil.copy2(target_overview, os.path.join(out_monthly_db, os.path.basename(target_overview)))
+    shutil.copy2(target_type, os.path.join(out_monthly_db, os.path.basename(target_type)))
 
     # Also copy to root of month folder
-    shutil.copy2(DB_OVERVIEW, os.path.join(out_monthly_dir, os.path.basename(DB_OVERVIEW)))
-    shutil.copy2(DB_TYPE, os.path.join(out_monthly_dir, os.path.basename(DB_TYPE)))
+    shutil.copy2(target_overview, os.path.join(out_monthly_dir, os.path.basename(target_overview)))
+    shutil.copy2(target_type, os.path.join(out_monthly_dir, os.path.basename(target_type)))
 
     print(f"[+] Successfully exported workbooks to:")
     print(f"    - {out_monthly_db}")
     print(f"    - {out_monthly_dir}")
-    print(f"    - {os.path.dirname(DB_OVERVIEW)}")
+    print(f"    - {os.path.dirname(target_overview)}")
 
 if __name__ == "__main__":
     src = sys.argv[1] if len(sys.argv) > 1 else None

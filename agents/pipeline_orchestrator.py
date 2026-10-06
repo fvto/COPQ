@@ -226,10 +226,14 @@ class PipelineOrchestratorAgent:
         # Phase 3: Synchronize Historical Database Workbooks
         # ---------------------------------------------------------
         t0 = time.time()
-        logger.info(">>> Phase 3/4: Synchronizing Master Database Workbooks...")
         try:
-            # write_db_month runs pipeline with clean_path
-            write_db_month.run_pipeline(clean_path=copq_clean_xlsx)
+            # write_db_month runs pipeline with configured database paths
+            write_db_month.run_pipeline(
+                clean_path=copq_clean_xlsx,
+                db_overview_path=self.db_overview,
+                db_type_path=self.db_type,
+                database_dir=self.database_dir
+            )
             monthly_archive = os.path.join(out_dir, "Monthly", period["period_iso"], "Database")
             telemetry["stages"]["phase3_database_sync"] = {
                 "status": "SUCCESS",

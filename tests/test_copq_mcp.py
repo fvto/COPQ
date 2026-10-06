@@ -156,7 +156,12 @@ def test_copq_pipeline_end_to_end_fixtures():
     and asserts 100% of Section 25 invariants and Section 13 terminal predicate.
     """
     test_out = os.path.join(ROOT_DIR, "scratch", "test_mcp_e2e_output")
+    test_db = os.path.join(test_out, "Database")
     os.makedirs(test_out, exist_ok=True)
+    os.makedirs(test_db, exist_ok=True)
+    # Clone master database workbooks to test_db so production databases are never modified
+    shutil.copy2(os.path.join(ROOT_DIR, "Database", "CoPQ database 25.xlsx"), test_db)
+    shutil.copy2(os.path.join(ROOT_DIR, "Database", "CoPQ_type_analysis.xlsx"), test_db)
 
     try:
         output = copq_pipeline(
@@ -164,7 +169,8 @@ def test_copq_pipeline_end_to_end_fixtures():
             period="2026-08",
             copq_input_dir=FIXTURES_COPQ,
             ftt_input_dir=FIXTURES_FTT,
-            output_dir=test_out
+            output_dir=test_out,
+            database_dir=test_db
         )
 
         assert output.status == "SUCCESS", f"Expected SUCCESS, got {output.status}. Errors: {output.errors}"

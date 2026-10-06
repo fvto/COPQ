@@ -417,7 +417,12 @@ def copq_pipeline(
         try:
             if not os.path.exists(clean_file):
                 raise FileNotFoundError(f"COPQ_Clean.xlsx required at {clean_file}. Run combine_copq first.")
-            write_db_month.run_pipeline(clean_path=clean_file)
+            write_db_month.run_pipeline(
+                clean_path=clean_file,
+                db_overview_path=orchestrator.db_overview,
+                db_type_path=orchestrator.db_type,
+                database_dir=orchestrator.database_dir
+            )
             m_db_dir = os.path.join(out_dir, "Monthly", period_info.iso, "Database")
             stages_completed.append("phase3_database_sync")
             artifacts.copq_clean = clean_file
