@@ -440,11 +440,79 @@ def update_copq_database_25(db_path, top_table, blocks, clean_path, report_month
     wb.save(db_path)
     return wb
 
+def _backup_file_safely(file_path):
+    """Creates a timestamped backup before mutation in a local .backup directory."""
+    if not file_path or not os.path.exists(file_path):
+        return
+    parent_dir = os.path.dirname(os.path.abspath(file_path))
+    backup_dir = os.path.join(parent_dir, ".backup")
+    os.makedirs(backup_dir, exist_ok=True)
+    fname = os.path.basename(file_path)
+    name, ext = os.path.splitext(fname)
+    ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(backup_dir, f"{name}_{ts}{ext}")
+    try:
+        shutil.copy2(file_path, backup_path)
+        all_backups = sorted([
+            os.path.join(backup_dir, f) for f in os.listdir(backup_dir)
+            if f.startswith(name) and f.endswith(ext)
+        ], key=os.path.getmtime)
+        while len(all_backups) > 10:
+            old = all_backups.pop(0)
+            try:
+                os.remove(old)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[*] Note: Backup creation skipped ({e})")
+
+
+def _heal_historical_columns_from_snapshots(wb, ws):
+    """
+    Ensures 'Current month' never suffers from lost or wiped historical month columns.
+    Cross-checks existing frozen snapshot sheets (e.g. Aug-26, Jul-26) against 'Current month'
+    and automatically restores any missing/blank/corrupted historical cells.
+    """
+    month_to_col_2026 = {
+        'Jan': 18, 'Feb': 19, 'Mar': 20, 'Apr': 21, 'May': 22, 'Jun': 23,
+        'Jul': 24, 'Aug': 25, 'Sep': 26, 'Oct': 27, 'Nov': 28, 'Dec': 29
+    }
+    healed_count = 0
+    for sname in wb.sheetnames:
+        if sname in ("Sheet1", "Current month"):
+            continue
+        if '-' in sname:
+            parts = sname.split('-')
+            m_str, y_str = parts[0], parts[1]
+            if y_str == '26' and m_str in month_to_col_2026:
+                col_idx = month_to_col_2026[m_str]
+                ws_snap = wb[sname]
+                for r in range(1, 51):
+                    val_snap = ws_snap.cell(r, col_idx).value
+                    val_cur = ws.cell(r, col_idx).value
+                    if val_snap is not None and (val_cur is None or (isinstance(val_snap, (int, float)) and val_snap > 0 and (val_cur is None or val_cur == 0))):
+                        c_dst = ws.cell(r, col_idx)
+                        c_dst.value = val_snap
+                        c_src = ws_snap.cell(r, col_idx)
+                        if c_src.has_style:
+                            c_dst.font = copy.copy(c_src.font)
+                            c_dst.border = copy.copy(c_src.border)
+                            c_dst.fill = copy.copy(c_src.fill)
+                            c_dst.number_format = copy.copy(c_src.number_format)
+                            c_dst.alignment = copy.copy(c_src.alignment)
+                        healed_count += 1
+    if healed_count > 0:
+        print(f"[+] Self-healed {healed_count} historical cells in 'Current month' from frozen snapshots.")
+
+
 def update_copq_type_analysis(type_path, ov_data, fac_data, mod_data, report_month):
     wb = openpyxl.load_workbook(type_path)
     if "Current month" not in wb.sheetnames:
         raise ValueError(f"Sheet 'Current month' not found in {type_path}")
     ws = wb["Current month"]
+
+    # Pre-heal: Ensure all existing historical columns in 'Current month' are intact
+    _heal_historical_columns_from_snapshots(wb, ws)
 
     month_hdr = report_month.strftime("%b")             # e.g. Aug
     snapshot_sheet_name = report_month.strftime("%b-%y") # e.g. Aug-26
@@ -658,6 +726,9 @@ def update_copq_type_analysis(type_path, ov_data, fac_data, mod_data, report_mon
             ws.cell(r, col_start + 3, round(it['hrs'], 1) if it.get('hrs') else None).number_format = '0.0'
             ws.cell(r, col_start + 4, round(it['cost'], 2)).number_format = fmt_curr
 
+    # Final heal before snapshotting to guarantee 100% complete historical columns
+    _heal_historical_columns_from_snapshots(wb, ws)
+
     # --- 4. Snapshot sheet ---
     if snapshot_sheet_name in wb.sheetnames:
         del wb[snapshot_sheet_name]
@@ -682,6 +753,10 @@ def run_pipeline(clean_path=None, db_overview_path=None, db_type_path=None, data
     else:
         target_overview = db_overview_path or DB_OVERVIEW
         target_type = db_type_path or DB_TYPE
+
+    # Safety: Create automatic timestamped backups before applying any updates
+    _backup_file_safely(target_overview)
+    _backup_file_safely(target_type)
 
     print(f"[+] Using clean source: {clean_path}")
     report_month = detect_report_month(clean_path)

@@ -258,7 +258,22 @@ def copq_pipeline(
     f_dir = _resolve_safe_path(ftt_input_dir, "FTT_Input")
     out_dir = _resolve_safe_path(output_dir, "Output")
     col_map = _resolve_safe_path(color_map_file, os.path.join("BC_Color", "Color_Defect.xlsx"))
-    db_dir = _resolve_safe_path(database_dir, "Database")
+    # Safety Guard: If copq_input_dir points to synthetic test fixtures and database_dir was not explicitly set,
+    # NEVER touch live production Database! Sandbox to a temporary test database.
+    is_test_fixture = any(k in str(copq_input_dir).lower() for k in ["fixture", "test"])
+    if is_test_fixture and not database_dir:
+        sandbox_db = os.path.join(out_dir, ".test_sandbox_db")
+        os.makedirs(sandbox_db, exist_ok=True)
+        import shutil
+        for db_name in ["CoPQ database 25.xlsx", "CoPQ_type_analysis.xlsx"]:
+            src_f = os.path.join(ROOT_DIR, "Database", db_name)
+            dst_f = os.path.join(sandbox_db, db_name)
+            if os.path.exists(src_f) and not os.path.exists(dst_f):
+                shutil.copy2(src_f, dst_f)
+        db_dir = sandbox_db
+        logger.warning(f"Test fixture run detected: sandboxing database mutations to {db_dir}")
+    else:
+        db_dir = _resolve_safe_path(database_dir, "Database")
     tmpl_pptx = _resolve_safe_path(template_pptx, os.path.join("Template_COPQ", "Template_COPQ.pptx"))
 
     os.makedirs(out_dir, exist_ok=True)
