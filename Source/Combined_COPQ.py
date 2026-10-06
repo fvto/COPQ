@@ -504,7 +504,12 @@ def run_copq_clean(workbook_or_path):
 
 
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "COPQ_Clean.xlsx")
+    _dir = os.path.dirname(__file__)
+    _base = os.path.dirname(_dir) if os.path.basename(_dir) == "Source" else _dir
+    default_target = os.path.join(_base, "Output", "COPQ_Clean.xlsx")
+    if not os.path.exists(default_target):
+        default_target = os.path.join(_dir, "COPQ_Clean.xlsx")
+    target = sys.argv[1] if len(sys.argv) > 1 else default_target
     if not os.path.exists(target):
         print(f"Target file not found: {target}")
         sys.exit(1)

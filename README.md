@@ -14,17 +14,23 @@ combine_COPQ/
 ├── process_ftt.py                # FTT B/C report processor
 ├── monthly_reporting.py          # Type classification helpers
 ├── pipeline_common.py            # Common utilities (site name extraction, safe save)
-├── Source/                       # Reporting & slide generation engine
+├── Source/                       # Core pipeline modules & reporting engines
+│   ├── Combined_COPQ.py          # Step 1: Script COPQ Clean
+│   ├── COPQ_Type_Detail.py       # Step 2: Script COPQ Type Detail
+│   ├── COPQ_Pivot_table.py       # Step 3: Script COPQ Pivot Table
+│   ├── COPQ_Database.py          # Step 4: COPQ Database
+│   ├── write_db_month.py         # Monthly database consolidation engine
+│   ├── update_copq_pptx.py       # Executive PowerPoint update engine
+│   ├── monthly_reporting.py      # Classification & validation helpers
+│   └── generate_pptx.py          # Legacy slide presentation builder
 ├── COPQ_Input/                   # ⬅ Drop raw ERP COPQ exports here (.xls/.xlsx/.csv)
 ├── FTT_Input/                    # ⬅ Drop raw FTT reports here
 ├── BC_Color/Color_Defect.xlsx    # Color/defect mapping used by the FTT processor
 ├── Database/                     # Monthly database reference workbooks
-└── Output/                       # ⬅ Workflow modules & generated reports
-    ├── Combined_COPQ.py          # Step 1: Script COPQ Clean
-    ├── COPQ_Type_Detail.py       # Step 2: Script COPQ Type Detail
-    ├── COPQ_Pivot_table.py       # Step 3: Script COPQ Pivot Table
-    ├── COPQ_Database.py          # Step 4: COPQ Database
-    └── COPQ_Clean.xlsx           # Combined master workbook (12 sheets)
+└── Output/                       # ⬅ Pure generated reports & deliverables
+    ├── COPQ_Clean.xlsx           # Combined master workbook (12 sheets)
+    ├── FTT_Combined_Report.xlsx  # Combined FTT B/C report
+    └── COPQ_Report_*.pptx        # Monthly executive PowerPoint presentations
 ```
 
 ---

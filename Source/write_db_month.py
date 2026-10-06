@@ -8,7 +8,7 @@ from openpyxl.utils import get_column_letter
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-if os.path.basename(HERE) == "Output":
+if os.path.basename(HERE) in ("Output", "Source"):
     BASE = os.path.dirname(HERE)
 else:
     BASE = HERE

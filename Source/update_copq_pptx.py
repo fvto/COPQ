@@ -46,15 +46,16 @@ from pptx.oxml.ns import qn
 # CONFIG
 # --------------------------------------------------------------------------
 HERE = os.path.dirname(os.path.abspath(__file__))
-if os.path.basename(HERE) == "Output":
+if os.path.basename(HERE) in ("Output", "Source"):
     BASE = os.path.dirname(HERE)
-    OUT_DIR = HERE
+    OUT_DIR = os.path.join(BASE, "Output")
 else:
     BASE = HERE
     OUT_DIR = os.path.join(HERE, "Output")
 
-if BASE not in sys.path:
-    sys.path.insert(0, BASE)
+for p in (BASE, os.path.join(BASE, "Source")):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 from monthly_reporting import classify_copq_type
 

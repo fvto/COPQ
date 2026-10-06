@@ -34,8 +34,16 @@ DEFAULT_OUTPUT_DIR = os.path.join(BASE_DIR, "Output")
 DEFAULT_COLOR_MAP = os.path.join(BASE_DIR, "BC_Color", "Color_Defect.xlsx")
 DEFAULT_FTT_REPORT = os.path.join(DEFAULT_OUTPUT_DIR, "FTT_BC_Report.xlsx")
 DEFAULT_FTT_REPORT_ALT = os.path.join(DEFAULT_OUTPUT_DIR, "FTT_Combined_Report.xlsx")
-DEFAULT_PPTX_SCRIPT = os.path.join(DEFAULT_OUTPUT_DIR, "update_copq_pptx.py")
-DEFAULT_DB_SCRIPT   = os.path.join(DEFAULT_OUTPUT_DIR, "write_db_month.py")
+DEFAULT_PPTX_SCRIPT = (
+    os.path.join(BASE_DIR, "Source", "update_copq_pptx.py")
+    if os.path.exists(os.path.join(BASE_DIR, "Source", "update_copq_pptx.py"))
+    else os.path.join(DEFAULT_OUTPUT_DIR, "update_copq_pptx.py")
+)
+DEFAULT_DB_SCRIPT = (
+    os.path.join(BASE_DIR, "Source", "write_db_month.py")
+    if os.path.exists(os.path.join(BASE_DIR, "Source", "write_db_month.py"))
+    else os.path.join(DEFAULT_OUTPUT_DIR, "write_db_month.py")
+)
 DEFAULT_PPTX_OUTPUT = os.path.join(DEFAULT_OUTPUT_DIR, "COPQ_Report_Sep_2026.pptx")
 
 SITES = ["VH", "VH2", "VH3", "VH4", "JV", "JV2", "JV3", "JVB"]
@@ -536,7 +544,7 @@ class Dashboard(tk.Tk):
                     "Script Not Found",
                     f"Could not find the script:\n{script}\n\n"
                     "Make sure write_db_month.py and update_copq_pptx.py are "
-                    "present in the Output folder.")
+                    "present in the Source or Output folder.")
                 return
         # python-pptx is required by the generator script.
         try:
