@@ -28,8 +28,8 @@ from mcp_server import server, copq_pipeline, copq_audit_quality, copq_generate_
 from monthly_reporting import classify_copq_type
 from pipeline_common import extract_site_name
 
-FIXTURES_COPQ = os.path.join(ROOT_DIR, "copq_pipeline_MCP_HANDOFF", "fixtures", "COPQ_Input")
-FIXTURES_FTT = os.path.join(ROOT_DIR, "copq_pipeline_MCP_HANDOFF", "fixtures", "FTT_Input")
+FIXTURES_COPQ = os.path.join(ROOT_DIR, "fixtures", "COPQ_Input")
+FIXTURES_FTT = os.path.join(ROOT_DIR, "fixtures", "FTT_Input")
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,9 @@ def test_tool_registration_and_schemas():
 
         # Find copq_pipeline tool
         pipeline_tool = next(t for t in tools if t.name == "copq_pipeline")
-        schema = pipeline_tool.input_schema
+        schema = getattr(pipeline_tool, "inputSchema", getattr(pipeline_tool, "input_schema", {}))
+        if hasattr(schema, "model_dump"):
+            schema = schema.model_dump()
         props = schema.get("properties", {})
 
         expected_fields = [

@@ -1,0 +1,36 @@
+{
+  "test_scope": "Synthetic 2-Site Pipeline Execution (VH, JV)",
+  "period_detected": "2026-08",
+  "copq_invariants": {
+    "expected_sites": [
+      "VH",
+      "JV"
+    ],
+    "expected_master_sheet": "COPQ_Clean",
+    "expected_columns_count": 21,
+    "first_column": "Site",
+    "touchup_override_applied": true,
+    "total_rows_minimum": 5
+  },
+  "ftt_invariants": {
+    "expected_sheets": [
+      "Combined_All",
+      "Site_VH",
+      "Site_JV",
+      "Top Defects Summary",
+      "ColorMap_bc",
+      "ColorMap_BC New 2026"
+    ],
+    "formula_pattern": "=IFERROR(SUMIFS(...), 0)",
+    "chart_count_minimum": 1
+  },
+  "database_invariants": {
+    "new_month_sheet": "Aug-26",
+    "cloned_dir_created": true
+  },
+  "pptx_invariants": {
+    "output_format": ".pptx",
+    "slide_count_minimum": 4,
+    "title_contains_period": true
+  }
+}

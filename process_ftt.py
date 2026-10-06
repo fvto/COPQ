@@ -536,6 +536,24 @@ def auto_map_ftt_columns(df):
     return mapped_df.loc[:, ~mapped_df.columns.duplicated()].copy()
 
 
+def filter_ftt_bc_defects(df: pd.DataFrame) -> pd.DataFrame:
+    """Filter Grade B and C defect records from FTT dataframe."""
+    metric_str = df.get("Metric", pd.Series(dtype=str)).astype(str).str.strip()
+    defect_str = df.get("Defect_Issue", pd.Series(dtype=str)).astype(str).str.strip()
+
+    mask_metric = metric_str.str.contains(
+        "B/Reject|C/Reject|B-Reject|C-Reject|^B$|^C$|Grade B|Grade C",
+        case=False,
+        na=False,
+    )
+    mask_defect = defect_str.str.contains("^B/|^C/|^B-|^C-", case=False, na=False)
+
+    out = df[mask_metric | mask_defect].copy()
+    if "FTT_Qty" in out.columns:
+        out["FTT_Qty"] = pd.to_numeric(out["FTT_Qty"], errors="coerce").fillna(0).astype(int)
+    return out
+
+
 def process_single_ftt_file(file_path):
     file_name = os.path.basename(file_path)
     site_name = extract_site_name(file_name)
@@ -563,18 +581,7 @@ def process_single_ftt_file(file_path):
     df["Date"] = df["Date"].fillna("N/A")
 
     # Filter Grade B/C defect criteria
-    metric_str = df["Metric"].astype(str).str.strip()
-    defect_str = df["Defect_Issue"].astype(str).str.strip()
-
-    mask_metric = metric_str.str.contains(
-        "B/Reject|C/Reject|B-Reject|C-Reject|^B$|^C$|Grade B|Grade C",
-        case=False,
-        na=False,
-    )
-    mask_defect = defect_str.str.contains("^B/|^C/|^B-|^C-", case=False, na=False)
-
-    df = df[mask_metric | mask_defect].copy()
-    df["FTT_Qty"] = pd.to_numeric(df["FTT_Qty"], errors="coerce").fillna(0).astype(int)
+    df = filter_ftt_bc_defects(df)
 
     print(f"     └─ Extracted {len(df)} B/C defect rows.")
     return df
@@ -800,6 +807,7 @@ def generate_ftt_report(
     cost_file=COST_FILE,
     cost_sheet_name=COST_SHEET_NAME,
     file_paths=None,
+    **kwargs,
 ):
     print("\n==================================================")
     print("  STARTING AUTOMATED FTT DATA PROCESSING")
@@ -838,6 +846,14 @@ def generate_ftt_report(
             files.extend(glob.glob(pattern))
 
         files = [f for f in files if not os.path.basename(f).startswith("~$")]
+
+        # Filter by report_month if specified and if files matching it exist
+        report_month = kwargs.get("report_month")
+        if report_month and files:
+            m_clean = str(report_month).strip()
+            month_filtered = [f for f in files if m_clean in os.path.basename(f)]
+            if month_filtered:
+                files = month_filtered
 
         if not files:
             print("[-] Error: No data files found in FTT input directory!")

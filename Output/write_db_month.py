@@ -23,6 +23,10 @@ CLEAN_XLSX = os.path.join(BASE, "Output", "COPQ_Clean.xlsx")
 DB_OVERVIEW = os.path.join(BASE, "Database", "CoPQ database 25.xlsx")
 DB_TYPE = os.path.join(BASE, "Database", "CoPQ_type_analysis.xlsx")
 
+# Monthly templates/archives for fallback
+CLEAN_BASELINE_TYPE = os.path.join(BASE, "Monthly", "2026-07", "Database", "CoPQ_type_analysis.xlsx")
+CLEAN_BASELINE_DB25 = os.path.join(BASE, "Monthly", "2026-07", "Database", "CoPQ database 25.xlsx")
+
 
 def detect_report_month(clean_path):
     fname = os.path.basename(clean_path)

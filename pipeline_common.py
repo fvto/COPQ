@@ -37,22 +37,28 @@ def extract_site_name(filename):
 
 
 def save_with_fallback(book, output_path, max_retries=19):
-    """Save `book` (an openpyxl Workbook or pptx Presentation) to
+    """Save `book` (an openpyxl Workbook, pptx Presentation, or save callback) to
     output_path, falling back to suffixed names (_v1, _v2, ...) if the
     original file is locked (e.g. open in Excel/PowerPoint).
 
     Returns the path actually written.
     """
+    def _do_save(dest):
+        if callable(book):
+            book(dest)
+        else:
+            book.save(dest)
+
     base, ext = os.path.splitext(output_path)
     try:
-        book.save(output_path)
+        _do_save(output_path)
         return output_path
     except (PermissionError, OSError) as e:
         print(f"\n[!] WARNING: Could not save to '{output_path}' ({e}). Attempting fallback names...")
         for i in range(1, max_retries + 1):
             fallback_file = f"{base}_v{i}{ext}"
             try:
-                book.save(fallback_file)
+                _do_save(fallback_file)
                 print(f"[+] Report saved to fallback file instead: {fallback_file}")
                 return fallback_file
             except (PermissionError, OSError):

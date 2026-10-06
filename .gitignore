@@ -25,3 +25,17 @@ Desktop.ini
 .venv
 env/
 venv/
+
+# Local machine tool configs
+.agents/mcp_config.json
+
+# Pipeline authority & runtime batch metadata
+.batches/
+.published/
+*.lock
+.copq-authority.json
+
+# Temporary deliverables and backup copies
+Output/*.zip
+Output/*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.pptx
+

@@ -126,6 +126,16 @@ def clean_copq_dataframe(raw_df):
     """
     df = raw_df.copy()
 
+    # 0. Check if headers are already in df.columns (e.g. from read_html or pre-parsed DataFrames)
+    col_vals = [str(c).strip().lower() for c in df.columns]
+    if any("date" in v for v in col_vals) and any("factory" in v or "type" in v or "fty" in v for v in col_vals):
+        header_row = pd.DataFrame([list(df.columns)], columns=range(df.shape[1]))
+        title_row = pd.DataFrame([["Cost Of Poor Quality"] + [""] * (df.shape[1] - 1)], columns=range(df.shape[1]))
+        data_df = df.copy()
+        data_df.columns = range(df.shape[1])
+        df = pd.concat([title_row, header_row, data_df], ignore_index=True)
+        return _normalize_copq_dates(df, 1, date_col_idx=0)
+
     # 1. Locate header row index (row with "Date" and "Factory"/"Fty" in it)
     header_idx = _find_copq_header_index(df)
     if header_idx is None:
@@ -144,8 +154,10 @@ def clean_copq_dataframe(raw_df):
         df = pd.concat([title_row, content_rows], ignore_index=True)
         header_idx = 1
     elif header_idx == 0:
-        # No separate title row, header is row 0
-        header_idx = 0
+        # No separate title row in raw export; insert standard title row at row 0
+        title_df = pd.DataFrame([["Cost Of Poor Quality"] + [""] * (df.shape[1] - 1)])
+        df = pd.concat([title_df, df], ignore_index=True)
+        header_idx = 1
 
     # 3. Drop footer 'Count=...' row
     if not df.empty:
@@ -498,29 +510,51 @@ def _write_pivot_title_header(ws, title, sub_columns, header_colors=None):
     ws.freeze_panes = f"B{ws.max_row + 1}"
 
 
-def combine_copq_files(input_dir=DEFAULT_INPUT_DIR, output_file=DEFAULT_OUTPUT_FILE):
+def combine_copq_files(
+    input_dir=DEFAULT_INPUT_DIR,
+    output_file=DEFAULT_OUTPUT_FILE,
+    file_paths=None,
+    report_month=None,
+    **kwargs,
+):
     print("=" * 65)
     print("  STARTING COPQ FILE COMBINER & CLEANER")
     print("=" * 65)
     print(f"  Input Directory:  {input_dir}")
     print(f"  Output File:      {output_file}")
+    if report_month:
+        print(f"  Report Month:     {report_month}")
     print("=" * 65)
 
-    if not os.path.exists(input_dir):
-        print(f"[-] Input directory does not exist: {input_dir}")
-        os.makedirs(input_dir, exist_ok=True)
-        print(f"   Created '{input_dir}'. Please place raw COPQ files there.")
-        return False
+    if file_paths:
+        all_files = [
+            f for f in file_paths
+            if os.path.exists(f) and not os.path.basename(f).startswith("~$")
+            and os.path.splitext(f)[1].lower() in (".xlsx", ".xls", ".csv")
+        ]
+    else:
+        if not os.path.exists(input_dir):
+            print(f"[-] Input directory does not exist: {input_dir}")
+            os.makedirs(input_dir, exist_ok=True)
+            print(f"   Created '{input_dir}'. Please place raw COPQ files there.")
+            return False
 
-    output_dir = os.path.dirname(output_file)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+        output_dir = os.path.dirname(output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
-    supported_extensions = ("*.csv", "*.xlsx", "*.xls")
-    all_files = []
-    for ext in supported_extensions:
-        all_files.extend(glob.glob(os.path.join(input_dir, ext)))
-    all_files = [f for f in all_files if not os.path.basename(f).startswith("~$")]
+        supported_extensions = ("*.csv", "*.xlsx", "*.xls")
+        all_files = []
+        for ext in supported_extensions:
+            all_files.extend(glob.glob(os.path.join(input_dir, ext)))
+        all_files = [f for f in all_files if not os.path.basename(f).startswith("~$")]
+
+        # Filter by report_month if specified and if files from other months exist
+        if report_month and all_files:
+            m_clean = report_month.strip()
+            month_filtered = [f for f in all_files if m_clean in os.path.basename(f)]
+            if month_filtered:
+                all_files = month_filtered
 
     if not all_files:
         print(f"[-] No Excel or CSV files found in: {input_dir}")
@@ -542,7 +576,14 @@ def combine_copq_files(input_dir=DEFAULT_INPUT_DIR, output_file=DEFAULT_OUTPUT_F
             if file_ext == ".csv":
                 df = pd.read_csv(file_path, header=None, encoding="latin1")
             elif file_ext in (".xlsx", ".xls"):
-                df = pd.read_excel(file_path, header=None)
+                try:
+                    df = pd.read_excel(file_path, header=None)
+                except Exception:
+                    try:
+                        html_dfs = pd.read_html(file_path, header=None)
+                        df = html_dfs[0] if html_dfs else pd.DataFrame()
+                    except Exception:
+                        raise
             else:
                 continue
 

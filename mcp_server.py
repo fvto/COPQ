@@ -56,8 +56,20 @@ from agents.pipeline_orchestrator import PipelineOrchestratorAgent
 from agents.quality_sentinel import QualitySentinelAgent
 from agents.watchdog_delivery import WatchdogDeliveryAgent
 
-# MCP SDK Import (mcp >= 2.0.0 uses MCPServer)
-from mcp.server.mcpserver import MCPServer
+# MCP SDK Import (mcp >= 2.0.0 uses MCPServer / FastMCP)
+try:
+    from mcp.server.mcpserver import MCPServer
+except ImportError:
+    try:
+        from mcp.server.fastmcp import FastMCP
+
+        class MCPServer(FastMCP):
+            def __init__(self, name="copq_pipeline", version="2.0.0", description="", **kwargs):
+                super().__init__(name=name, instructions=description, **kwargs)
+                self.version = version
+                self.description = description
+    except ImportError:
+        MCPServer = None
 
 # Initialize server
 server = MCPServer(

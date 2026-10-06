@@ -368,7 +368,19 @@ class Dashboard(tk.Tk):
                 self.status.set(f"{count_label} selected — click '2. Process FTT' to generate the report.")
 
     def _selected_ftt_files(self):
-        return [p.strip() for p in self.ftt_files_path.get().split("|") if p.strip()]
+        selected = [p.strip() for p in self.ftt_files_path.get().split("|") if p.strip()]
+        if not selected and os.path.exists(DEFAULT_FTT_INPUT_DIR):
+            found = [
+                os.path.join(DEFAULT_FTT_INPUT_DIR, f)
+                for f in sorted(os.listdir(DEFAULT_FTT_INPUT_DIR))
+                if not f.startswith("~$")
+                and os.path.splitext(f)[1].lower() in (".xlsx", ".xls", ".csv")
+                and os.path.isfile(os.path.join(DEFAULT_FTT_INPUT_DIR, f))
+            ]
+            if len(found) in (1, 4) or len(found) > 0:
+                self.ftt_files_path.set(" | ".join(found))
+                return found
+        return selected
 
     def clear_ftt_files(self):
         self.ftt_files_path.set("")
