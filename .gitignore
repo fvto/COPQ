@@ -38,4 +38,6 @@ venv/
 # Temporary deliverables and backup copies
 Output/*.zip
 Output/*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.pptx
+scratch/
+**/.backup/
 

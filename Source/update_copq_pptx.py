@@ -32,6 +32,7 @@ import sys
 import shutil
 import logging
 import io
+import math
 from lxml import etree
 from PIL import Image, ImageDraw, ImageFont
 
@@ -816,7 +817,33 @@ def update_top3_model(prs, copq):
         for ser in _ser_elements(ch):
             set_series_categories(ser, cats)
             set_series_values_ordered(ser, vals)
+
+        # Enforce Safe Zone: Dynamically scale valAx max so horizontal bars and labels
+        # never encroach or collide with the adjacent 'Top 3 Defect' stacked chart!
+        valid_vals = [v for v in vals if v is not None and v > 0]
+        if valid_vals:
+            max_cost = max(valid_vals)
+            default_min = 4000 if site == "JV" else 2000
+            dynamic_max = max(default_min, max_cost * 15.0)
+            rounded_max = int(math.ceil(dynamic_max / 1000.0) * 1000)
+            _set_chart_valax_max(ch, rounded_max)
+            log.info(f"top model ({site}) -> valAx max scaled to {rounded_max} for safe zone")
+
         log.info(f"top model ({site}) -> {[c for c in cats if c]}")
+
+
+def _set_chart_valax_max(ch, max_val):
+    """Set value axis maximum on chart XML to enforce a safe zone before adjacent charts."""
+    xml = ch._element
+    valAx = xml.xpath('.//c:valAx')
+    if valAx:
+        scaling = valAx[0].xpath('.//c:scaling')
+        if scaling:
+            max_elem = scaling[0].xpath('.//c:max')
+            if max_elem:
+                max_elem[0].attrib['val'] = str(int(max_val))
+            else:
+                etree.SubElement(scaling[0], qn('c:max'), val=str(int(max_val)))
 
 def _is_dark_hex(hex_str):
     """Return True if hex color is visually dark (needs white font)."""
