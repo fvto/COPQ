@@ -36,15 +36,36 @@ COST_LIMIT = 1000  # error if cost > 1000
 REINSPECTION_TYPE = "reinspection"
 
 REQUIRED_FIELDS = ["Date", "Category", "Type", "Factory", "Model"]
-STYLE_FACTORIES = ["factory 1", "factory 2", "factory 3", "factory 4", "factory 5", "sandals"]
+STYLE_FACTORIES = ["factory 1", "factory 2", "factory 3", "factory 4", "factory 5", "sandals", "factory sandals"]
 MOLD_FACTORIES = ["ip", "os", "stockfitting"]
 
 
+def _is_mold_factory(f_name):
+    f = str(f_name or "").strip().lower()
+    return any(k in f for k in ["ip", "os", "stockfitting", "sole", "bottom", "mold"])
+
+
+def _is_style_factory(f_name):
+    f = str(f_name or "").strip().lower()
+    return any(k in f for k in ["factory", "fty", "sandals", "line", "stitch", "assembly", "upper"])
+
+
+def _is_blank(val):
+    if val is None:
+        return True
+    if isinstance(val, float) and (val != val):  # math.isnan check
+        return True
+    s = str(val).strip()
+    return s == "" or s.lower() == "nan"
+
+
 def _to_float(val):
-    if val is None or val == "":
+    if _is_blank(val):
         return None
     try:
         s = str(val).replace("$", "").replace(",", "").strip()
+        if s.lower() == "nan":
+            return None
         return float(s)
     except (ValueError, TypeError):
         return None
@@ -63,7 +84,14 @@ def run_copq_clean(workbook_or_path):
         wb = workbook_or_path
 
     output_name = "COPQ_Clean"
-    skip_sheets = [output_name]
+    skip_sheets = [
+        output_name,
+        "COPQ_Pivot_Overview",
+        "COPQ_Pivot_TopFactory",
+        "COPQ_Pivot_TopModel",
+        "COPQ_Pivot_ReInsp&TouchUp",
+        "COPQ_Report",
+    ]
 
     # Delete existing sheet if present
     if output_name in wb.sheetnames:
@@ -71,9 +99,12 @@ def run_copq_clean(workbook_or_path):
 
     out_ws = wb.create_sheet(title=output_name)
 
-    # 1. Pass 1: Gather all unique headers across all site sheets
+    # 1. Pass 1: Gather all unique headers across all site sheets and build reference maps
     master_headers = []
     seen_headers = set()
+    style_to_model = {}
+    mold_to_model = {}
+    model_to_style = {}
 
     for sheet_name in wb.sheetnames:
         if sheet_name in skip_sheets:
@@ -88,6 +119,25 @@ def run_copq_clean(workbook_or_path):
             if h and h not in seen_headers:
                 seen_headers.add(h)
                 master_headers.append(h)
+
+        # Build cross-row reference maps for smart self-healing
+        m_col_p1 = row_vals.index(MODEL_FIELD) if MODEL_FIELD in row_vals else -1
+        s_col_p1 = row_vals.index(STYLE_FIELD) if STYLE_FIELD in row_vals else -1
+        mold_col_p1 = row_vals.index("Mold") if "Mold" in row_vals else -1
+
+        for r in range(3, ws.max_row + 1):
+            m_val = str(ws.cell(r, m_col_p1 + 1).value or "").strip() if m_col_p1 >= 0 else ""
+            if not m_val or m_val.lower() == "nan":
+                continue
+            if s_col_p1 >= 0:
+                s_val = str(ws.cell(r, s_col_p1 + 1).value or "").strip()
+                if s_val and s_val.lower() != "nan":
+                    style_to_model[s_val.upper()] = m_val
+                    model_to_style.setdefault(m_val.upper(), s_val)
+            if mold_col_p1 >= 0:
+                mold_val = str(ws.cell(r, mold_col_p1 + 1).value or "").strip()
+                if mold_val and mold_val.lower() != "nan":
+                    mold_to_model[mold_val.upper()] = m_val
 
     if not master_headers:
         print("[!] No valid site data found across sheets.")
@@ -125,6 +175,8 @@ def run_copq_clean(workbook_or_path):
         factory_idx = get_col_idx("Factory")
         mold_idx = get_col_idx("Mold")
         manpower_idx = get_col_idx("Manpower")
+        sgs_qty_idx = get_col_idx("SGS Retest Qty (Pic)")
+        sgs_price_idx = get_col_idx("SGS Test unit price/pic ($)")
 
         for r in range(3, ws.max_row + 1):
             row_vals = [ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
@@ -141,11 +193,11 @@ def run_copq_clean(workbook_or_path):
             if type_raw == "rework":
                 continue
 
-            normalized = [row_map.get(h, "") for h in master_headers]
+            normalized = ["" if _is_blank(row_map.get(h)) else row_map.get(h) for h in master_headers]
 
             missing = [
                 h for h in REQUIRED_FIELDS
-                if h not in row_map or row_map[h] is None or str(row_map[h]).strip() == ""
+                if h not in row_map or _is_blank(row_map[h])
             ]
 
             # --- Validation checks ---
@@ -159,14 +211,37 @@ def run_copq_clean(workbook_or_path):
             qty_val = _to_float(get_val(qty_idx))
             cost_val = _to_float(get_val(cost_idx))
             manpower_val = _to_float(get_val(manpower_idx))
+            sgs_qty_val = _to_float(get_val(sgs_qty_idx))
+            sgs_price_val = _to_float(get_val(sgs_price_idx))
 
             has_hours = hours_val is not None
             has_qty = qty_val is not None
             has_cost = cost_val is not None
 
-            # Rule 1: Working hours > 15 AND Defective Qty(Pair) < 2000
+            # Negative numbers anomaly check
+            if has_cost and cost_val < 0:
+                validation_errors.append(f"Negative {COST_FIELD}")
+                local_highlights.append(COST_FIELD)
+            if has_qty and qty_val < 0:
+                validation_errors.append(f"Negative {QTY_FIELD}")
+                local_highlights.append(QTY_FIELD)
+            if has_hours and hours_val < 0:
+                validation_errors.append(f"Negative {HOURS_FIELD}")
+                local_highlights.append(HOURS_FIELD)
+
+            # Rule 1A: Extreme Working hours > 15 AND Defective Qty(Pair) < 2000
             if has_hours and has_qty and hours_val > HOURS_LIMIT and qty_val < QTY_LIMIT:
                 validation_errors.append(f"{HOURS_FIELD} > {HOURS_LIMIT} & {QTY_FIELD} < {QTY_LIMIT}")
+                local_highlights.extend([HOURS_FIELD, QTY_FIELD])
+
+            # Rule 1B (Slide 1 VH3): Working hours > 5 AND Defective Qty(Pair) < 300
+            elif has_hours and has_qty and hours_val > 5.0 and qty_val < 300:
+                validation_errors.append(f"{HOURS_FIELD} > 5 & {QTY_FIELD} < 300")
+                local_highlights.extend([HOURS_FIELD, QTY_FIELD])
+
+            # Rule 1C: Abnormal inspection rate (< 25 pairs/h for extended hours > 3h)
+            elif has_hours and has_qty and hours_val > 3.0 and qty_val > 0 and (qty_val / hours_val) < 25.0:
+                validation_errors.append("Abnormal inspection rate (< 25 pairs/h)")
                 local_highlights.extend([HOURS_FIELD, QTY_FIELD])
 
             # Rule 2: Ttl cost ($) > 1000
@@ -176,93 +251,172 @@ def run_copq_clean(workbook_or_path):
 
             type_raw = str(get_val(type_idx) or "").strip().lower()
             is_reinspection = (type_raw == REINSPECTION_TYPE)
+            is_bc_grade = ("b/c" in type_raw) or ("b grade" in type_raw) or ("c grade" in type_raw)
 
             factory_raw = str(get_val(factory_idx) or "").strip().lower()
             mold_raw = get_val(mold_idx)
-            mold_blank = (mold_idx >= 0 and (mold_raw is None or str(mold_raw).strip() == ""))
+            mold_blank = (mold_idx >= 0 and _is_blank(mold_raw))
 
-            uses_style_nbr = factory_raw in STYLE_FACTORIES
-            uses_mold = factory_raw in MOLD_FACTORIES
+            uses_mold = _is_mold_factory(factory_raw)
+            uses_style_nbr = not uses_mold and _is_style_factory(factory_raw)
 
             category_raw = get_val(category_idx)
-            category_blank = (category_idx >= 0 and (category_raw is None or str(category_raw).strip() == ""))
+            category_blank = (category_idx >= 0 and _is_blank(category_raw))
 
-            type_blank = (type_idx >= 0 and (type_raw == ""))
+            type_blank = (type_idx >= 0 and _is_blank(type_raw))
 
             style_raw = get_val(style_idx)
-            style_blank = (style_idx >= 0 and (style_raw is None or str(style_raw).strip() == ""))
+            style_blank = (style_idx >= 0 and _is_blank(style_raw))
 
             model_raw = get_val(model_idx)
-            model_blank = (model_idx >= 0 and (model_raw is None or str(model_raw).strip() == ""))
+            model_blank = (model_idx >= 0 and _is_blank(model_raw))
 
-            hours_blank_or_zero = (hours_idx >= 0 and (not has_hours or hours_val == 0))
-            qty_blank_or_zero = (qty_idx >= 0 and (not has_qty or qty_val == 0))
-            cost_blank_or_zero = (cost_idx >= 0 and (not has_cost or cost_val == 0))
+            # Smart Self-Healing for missing Model / Style Nbr via cross-row lookup
+            auto_resolved_notes = []
+            if model_blank:
+                if not style_blank and str(style_raw).strip().upper() in style_to_model:
+                    resolved_m = style_to_model[str(style_raw).strip().upper()]
+                    model_raw = resolved_m
+                    model_blank = False
+                    if MODEL_FIELD in master_headers:
+                        normalized[master_headers.index(MODEL_FIELD)] = resolved_m
+                    row_map[MODEL_FIELD] = resolved_m
+                    auto_resolved_notes.append(f"Auto-resolved Model from Style Nbr: {resolved_m}")
+                elif not mold_blank and str(mold_raw).strip().upper() in mold_to_model:
+                    resolved_m = mold_to_model[str(mold_raw).strip().upper()]
+                    model_raw = resolved_m
+                    model_blank = False
+                    if MODEL_FIELD in master_headers:
+                        normalized[master_headers.index(MODEL_FIELD)] = resolved_m
+                    row_map[MODEL_FIELD] = resolved_m
+                    auto_resolved_notes.append(f"Auto-resolved Model from Mold: {resolved_m}")
+
+            if style_blank and uses_style_nbr and not model_blank:
+                if str(model_raw).strip().upper() in model_to_style:
+                    resolved_s = model_to_style[str(model_raw).strip().upper()]
+                    style_raw = resolved_s
+                    style_blank = False
+                    if STYLE_FIELD in master_headers:
+                        normalized[master_headers.index(STYLE_FIELD)] = resolved_s
+                    row_map[STYLE_FIELD] = resolved_s
+                    auto_resolved_notes.append(f"Auto-resolved Style Nbr from Model: {resolved_s}")
+
+            # Re-evaluate missing fields after potential self-healing
+            missing = [
+                h for h in REQUIRED_FIELDS
+                if h not in row_map or _is_blank(row_map[h])
+            ]
+
+            hours_blank_or_zero = (hours_idx >= 0 and (hours_val is None or hours_val == 0))
+            qty_blank_or_zero = (qty_idx >= 0 and (qty_val is None or qty_val == 0))
+            cost_blank_or_zero = (cost_idx >= 0 and (cost_val is None or cost_val == 0))
 
             manpower_raw = get_val(manpower_idx)
             manpower_blank_or_zero = (
-                manpower_idx >= 0 and (manpower_raw is None or str(manpower_raw).strip() == "" or manpower_val == 0)
+                manpower_idx >= 0 and (_is_blank(manpower_raw) or manpower_val is None or manpower_val == 0)
             )
 
-            identifier_blank = mold_blank if uses_mold else style_blank
-            identifier_idx = mold_idx if uses_mold else style_idx
+            # Rule 3: Missing data (Slide 3 JV2)
+            # Row where key metrics (model, qty, hours, cost, manpower) are empty or zero
+            is_missing_data = (
+                model_blank and qty_blank_or_zero and hours_blank_or_zero and cost_blank_or_zero and manpower_blank_or_zero
+            )
 
-            present_fields = [i for i in [category_idx, identifier_idx, model_idx, manpower_idx, hours_idx, cost_idx] if i >= 0]
-            blank_flags = [category_blank, identifier_blank, model_blank, manpower_blank_or_zero, hours_blank_or_zero, cost_blank_or_zero]
-            blank_count = sum(1 for (i, b) in zip([category_idx, identifier_idx, model_idx, manpower_idx, hours_idx, cost_idx], blank_flags) if i >= 0 and b)
-
-            is_blank_data_row = len(present_fields) >= 4 and blank_count == len(present_fields)
-
-            if is_blank_data_row:
-                validation_errors.append("Blank data")
+            if is_missing_data:
+                validation_errors.append("Missing data")
                 local_highlights.extend([
-                    CATEGORY_FIELD,
-                    "Mold" if uses_mold else STYLE_FIELD,
                     MODEL_FIELD,
+                    QTY_FIELD,
                     "Manpower",
                     HOURS_FIELD,
                     COST_FIELD
                 ])
+                if uses_mold:
+                    local_highlights.append("Mold")
+                elif uses_style_nbr:
+                    local_highlights.append(STYLE_FIELD)
             else:
-                if is_reinspection and hours_blank_or_zero:
+                # Rule 4: Slide 3 JV2 Row 3 - Wrong Working hours => Wrong Ttl cost ($)
+                if is_reinspection and hours_blank_or_zero and not qty_blank_or_zero:
                     validation_errors.append(f"Wrong {HOURS_FIELD} => Wrong {COST_FIELD}")
                     local_highlights.extend([HOURS_FIELD, COST_FIELD])
+                    if manpower_val and manpower_val > 0:
+                        local_highlights.append("Manpower")
 
-                if is_reinspection and qty_blank_or_zero:
+                if is_reinspection and qty_blank_or_zero and not hours_blank_or_zero:
                     validation_errors.append(f"Wrong {QTY_FIELD}")
                     local_highlights.append(QTY_FIELD)
 
-                if is_reinspection and uses_style_nbr and style_blank:
-                    validation_errors.append(f"{STYLE_FIELD} blank (Reinspection)")
-                    local_highlights.append(STYLE_FIELD)
+                if is_reinspection and not hours_blank_or_zero and cost_blank_or_zero:
+                    validation_errors.append(f"Working hours present but zero {COST_FIELD}")
+                    local_highlights.extend([HOURS_FIELD, COST_FIELD])
 
-                if is_reinspection and uses_mold and mold_blank:
-                    validation_errors.append("Mold blank (Reinspection)")
-                    local_highlights.append("Mold")
+                # Rule 5: Slide 2 VH - Model Linking Rules
+                if is_reinspection:
+                    if uses_mold:
+                        if mold_blank:
+                            # Slide 2 Row 1: Thiếu mold code => không link model
+                            validation_errors.append("Missing mold code => cannot link model")
+                            local_highlights.extend(["Mold", MODEL_FIELD])
+                        elif model_blank:
+                            # Slide 2 Row 2 & 3: Sai Mold code => Không link được model
+                            validation_errors.append("Invalid mold code => cannot link model")
+                            local_highlights.extend(["Mold", MODEL_FIELD])
+                    elif uses_style_nbr:
+                        if style_blank:
+                            # Slide 2 Row 4: Thiếu hình thể => không link được model
+                            validation_errors.append(f"Missing {STYLE_FIELD.lower()} => cannot link model")
+                            local_highlights.extend([STYLE_FIELD, MODEL_FIELD])
+                        elif model_blank:
+                            # Sai hình thể => Không link được model
+                            validation_errors.append(f"Invalid {STYLE_FIELD.lower()} => cannot link model")
+                            local_highlights.extend([STYLE_FIELD, MODEL_FIELD])
+                    else:
+                        if model_blank:
+                            validation_errors.append("Missing model => cannot link model")
+                            local_highlights.append(MODEL_FIELD)
 
-                if is_reinspection and model_blank:
-                    validation_errors.append(f"{MODEL_FIELD} blank (Reinspection)")
-                    local_highlights.append(MODEL_FIELD)
+                # B/C Grade consistency checks
+                if is_bc_grade:
+                    if qty_blank_or_zero and not cost_blank_or_zero:
+                        validation_errors.append(f"B/C Grade missing {QTY_FIELD}")
+                        local_highlights.append(QTY_FIELD)
+                    elif cost_blank_or_zero and not qty_blank_or_zero:
+                        validation_errors.append(f"B/C Grade missing {COST_FIELD}")
+                        local_highlights.append(COST_FIELD)
+
+                # SGS Retest consistency checks
+                if sgs_qty_val and sgs_qty_val > 0 and (sgs_price_val is None or sgs_price_val == 0):
+                    validation_errors.append("SGS Retest Qty recorded without unit price")
+                    local_highlights.extend(["SGS Retest Qty (Pic)", "SGS Test unit price/pic ($)"])
+                elif sgs_price_val and sgs_price_val > 0 and (sgs_qty_val is None or sgs_qty_val == 0):
+                    validation_errors.append("SGS unit price recorded without Retest Qty")
+                    local_highlights.extend(["SGS Retest Qty (Pic)", "SGS Test unit price/pic ($)"])
 
                 if type_blank and cost_blank_or_zero:
                     validation_errors.append(f"Blank {TYPE_FIELD} => Blank {COST_FIELD}")
                     local_highlights.extend([TYPE_FIELD, COST_FIELD])
+                elif type_blank:
+                    validation_errors.append(f"{TYPE_FIELD} blank")
+                    local_highlights.append(TYPE_FIELD)
 
                 if category_blank:
                     validation_errors.append(f"{CATEGORY_FIELD} blank")
                     local_highlights.append(CATEGORY_FIELD)
 
-                if type_blank and not cost_blank_or_zero:
-                    validation_errors.append(f"{TYPE_FIELD} blank")
-                    local_highlights.append(TYPE_FIELD)
+            # Add auto-resolved notices to validation_errors
+            validation_errors.extend(auto_resolved_notes)
 
             # Data Quality Status
-            if missing and validation_errors:
+            actual_errors = [e for e in validation_errors if not e.startswith("Auto-resolved")]
+            if missing and actual_errors:
                 status = "Missing Data & Validation Error"
             elif missing:
                 status = "Missing Data"
-            elif validation_errors:
+            elif actual_errors:
                 status = "Validation Error"
+            elif auto_resolved_notes:
+                status = "Auto-Resolved"
             else:
                 status = "OK"
 

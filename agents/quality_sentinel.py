@@ -185,7 +185,7 @@ class QualitySentinelAgent:
                 defect_col = None
                 for col in df.columns:
                     c_norm = str(col).lower().strip()
-                    if "defect" in c_norm or "lỗi" in c_norm:
+                    if ("defect" in c_norm or "lỗi" in c_norm) and "location" not in c_norm and "position" not in c_norm:
                         defect_col = col
                         break
                 if defect_col:
@@ -194,7 +194,18 @@ class QualitySentinelAgent:
                         d_str = str(d).strip()
                         total_ftt_defects_found.add(d_str)
                         d_norm = re.sub(r"\s+", "", d_str.lower())
-                        if d_norm not in known_defects:
+                        if d_norm in known_defects:
+                            continue
+                        clean_norm = re.sub(r"^[bc]/", "", d_norm)
+                        if clean_norm in known_defects:
+                            continue
+                        matched_cat = False
+                        for k in known_defects:
+                            k_clean = re.sub(r"^[bc]/", "", k)
+                            if len(k_clean) >= 4 and (k_clean in clean_norm or clean_norm in k_clean):
+                                matched_cat = True
+                                break
+                        if not matched_cat:
                             unmapped_defects[d_str] = unmapped_defects.get(d_str, 0) + 1
             except Exception:
                 pass
@@ -237,13 +248,44 @@ class QualitySentinelAgent:
         neg_cost = df[df["Ttl cost ($)"] < 0] if "Ttl cost ($)" in df.columns else pd.DataFrame()
         neg_qty = df[df["Defective Qty(Pair)"] < 0] if "Defective Qty(Pair)" in df.columns else pd.DataFrame()
 
+        # Anomaly 1B: Working hours > 5 & Defective Qty < 300
+        disprop_hours_df = (
+            df[(df["Working hours"] > 5.0) & (df["Defective Qty(Pair)"] < 300)]
+            if ("Working hours" in df.columns and "Defective Qty(Pair)" in df.columns)
+            else pd.DataFrame()
+        )
+        # Validation error rows from COPQ_Clean
+        val_error_df = (
+            df[df["Validation Errors"].notna() & (df["Validation Errors"].astype(str).str.strip() != "")]
+            if "Validation Errors" in df.columns
+            else pd.DataFrame()
+        )
+
         findings["statistical_anomalies"] = {
             "total_records_audited": len(df),
             "high_working_hours_count": len(high_hours_df),
+            "disproportionate_hours_count": len(disprop_hours_df),
+            "validation_errors_count": len(val_error_df),
             "high_cost_outliers_count": len(high_cost_df),
             "negative_cost_records": len(neg_cost),
             "negative_qty_records": len(neg_qty)
         }
+
+        if len(disprop_hours_df) > 0:
+            sample_models = disprop_hours_df["Model"].dropna().head(3).tolist() if "Model" in disprop_hours_df.columns else []
+            findings["action_items"].append({
+                "severity": "WARNING",
+                "category": "Disproportionate Working Hours",
+                "message": f"{len(disprop_hours_df)} records have high working hours (> 5h) for low defective qty (< 300 pairs). Samples: {', '.join(map(str, sample_models))}."
+            })
+
+        if len(val_error_df) > 0:
+            err_samples = val_error_df["Validation Errors"].unique()[:3].tolist()
+            findings["action_items"].append({
+                "severity": "WARNING",
+                "category": "Validation Errors",
+                "message": f"{len(val_error_df)} records flagged with validation issues. Samples: {'; '.join(map(str, err_samples))}."
+            })
 
         if len(high_hours_df) > 0:
             sample_models = high_hours_df["Model"].dropna().head(3).tolist() if "Model" in high_hours_df.columns else []
