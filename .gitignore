@@ -41,3 +41,20 @@ Output/*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.pptx
 scratch/
 **/.backup/
 
+# Fallback Excel & Office files from save_with_fallback
+*_v[0-9]*.xlsx
+*_v[0-9]*.xls
+*_v[0-9]*.pptx
+*.tmp.zip
+
+# Input archives
+COPQ_Input/*.zip
+FTT_Input/*.zip
+
+# Test & coverage caches
+.pytest_cache/
+test_out/
+.coverage
+htmlcov/
+
+

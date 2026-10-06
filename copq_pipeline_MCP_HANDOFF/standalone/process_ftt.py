@@ -694,20 +694,31 @@ def write_site_matrix(ws_pivot, combined_df, site, model_cost_map,
 
     top_models_df = site_df[site_df["Model"].isin(top_models)]
     per_model_top_defects = {}
-    selected_defects = set()
+    defect_max_rate = {}
+    defect_total_qty = {}
+
     for model_name in top_models:
         model_df = top_models_df[top_models_df["Model"] == model_name]
-        model_top3 = (
-            model_df.groupby("Defect_Issue")["FTT_Qty"].sum()
-            .nlargest(3).index.tolist()
-        )
+        tot_qty = model_df["FTT_Qty"].sum()
+        g_defects = model_df.groupby("Defect_Issue")["FTT_Qty"].sum().reset_index()
+        g_defects["rate"] = g_defects["FTT_Qty"] / tot_qty if tot_qty > 0 else 0
+        g_sorted = g_defects.sort_values(by=["FTT_Qty", "Defect_Issue"], ascending=[False, False])
+        top3_df = g_sorted.head(3)
+        model_top3 = top3_df["Defect_Issue"].tolist()
         per_model_top_defects[model_name] = model_top3
-        selected_defects.update(model_top3)
 
-    defects_in_top_models = (
-        top_models_df[top_models_df["Defect_Issue"].isin(selected_defects)]
-        .groupby("Defect_Issue")["FTT_Qty"].sum()
-        .sort_values(ascending=False).index.tolist()
+        for _, row in top3_df.iterrows():
+            d = row["Defect_Issue"]
+            r = row["rate"]
+            q = row["FTT_Qty"]
+            defect_max_rate[d] = max(defect_max_rate.get(d, 0.0), r)
+            defect_total_qty[d] = defect_total_qty.get(d, 0) + q
+
+    # Sort columns left-to-right (bottom-to-top in stacked chart) by max rate descending
+    defects_in_top_models = sorted(
+        defect_max_rate.keys(),
+        key=lambda d: (defect_max_rate[d], defect_total_qty[d]),
+        reverse=True,
     )
 
     header_row_idx = current_row
